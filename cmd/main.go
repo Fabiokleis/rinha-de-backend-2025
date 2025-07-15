@@ -208,12 +208,10 @@ func (ph *PaymentHandler) getPayments(r *http.Request, w http.ResponseWriter) {
 //     }
 // }
 
-func (ph *PaymentHandler) getSummary(r *http.Request, w http.ResponseWriter) {
-
-}
+func (ph *PaymentHandler) getSummary(r *http.Request, w http.ResponseWriter) {}
 
 func main() {
-
+	flag.Parse()
 	ctx := context.Background()
 	dbpool, err := pgxpool.New(ctx, os.Getenv("DB_CONNECTION_STRING"))
 	if err != nil {
