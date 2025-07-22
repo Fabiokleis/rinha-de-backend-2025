@@ -1,16 +1,14 @@
 package payments
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	cr "rinha/internal/api/common_responses"
 	db "rinha/internal/database"
 
-	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type PaymentHandler struct{}
@@ -32,19 +30,83 @@ func (ph *PaymentHandler) createPayment(r *http.Request, w http.ResponseWriter) 
 		return
 	}
 
+	var id string
 	payment := data.Payment
-	_, err := db.Pgxpool.Exec(db.PgxCtx, "insert into payments values ($1, $2, NOW())", payment.CorrelationId, payment.Amount)
-	var pgErr *pgconn.PgError
+	err := db.Pgxpool.QueryRow(db.PgxCtx, "insert into payments values ($1, $2, NOW()) returning correlation_id", payment.CorrelationId, payment.Amount).Scan(&id)
 	if err != nil {
-		if errors.As(err, &pgErr) {
-			fmt.Println(pgErr.Message) // => syntax error at end of input
-			fmt.Println(pgErr.Code)    // => 42601
-		}
+		fmt.Println("id: ", id)
 		fmt.Println("err: ", err.Error())
 		render.Render(w, r, cr.ErrServerInternal())
+		return
 	}
 
 	render.Render(w, r, cr.SuccessCreated())
+}
+
+// POST /payments
+// {
+//     "correlationId": "4a7901b8-7d26-4d9d-aa19-4dc1c7cf60b3",
+//     "amount": 19.90,
+//     "requestedAt" : "2025-07-15T12:34:56.000Z"
+// }
+
+// HTTP 200 - Ok
+// {
+//     "message": "payment processed successfully"
+// }
+
+func (ph *PaymentHandler) processPayment(r *http.Request, w http.ResponseWriter) {
+	data := &PaymentProcessRequest{}
+	if bindError := render.Bind(r, data); bindError != nil {
+		fmt.Println(bindError.Error())
+		render.Render(w, r, cr.ErrInvalidRequest("failed to parse payment process."))
+		return
+	}
+	payment := data.Payment
+	rtx, err := db.Pgxpool.BeginTx(db.PgxCtx, pgx.TxOptions{})
+
+	if err != nil {
+		fmt.Println("failed to start transaction: ", err.Error())
+		render.Render(w, r, cr.ErrServerInternal())
+		return
+	}
+
+	var amount *float64
+	err = rtx.QueryRow(db.PgxCtx, "select amount from payments where correlation_id = $1", payment.CorrelationId).Scan(amount)
+
+	if err != nil {
+		rtx.Rollback(db.PgxCtx)
+		fmt.Println("failed to select amount: ", err.Error())
+		render.Render(w, r, cr.ErrServerInternal())
+		return
+	}
+	if amount == nil {
+		rtx.Rollback(db.PgxCtx)
+		fmt.Println("correlation_id not found")
+		render.Render(w, r, cr.ErrNotFound())
+		return
+	}
+
+	var id *string
+	err = rtx.QueryRow(db.PgxCtx, "update table payments set amount = $2 where correlation_id = $1 returning correlation_id", payment.CorrelationId, payment.Amount-*amount).Scan(id)
+
+	if err != nil {
+		rtx.Rollback(db.PgxCtx)
+		fmt.Println("failed to update amount: ", err.Error())
+		render.Render(w, r, cr.ErrServerInternal())
+		return
+	}
+
+	if id == nil {
+		rtx.Rollback(db.PgxCtx)
+		fmt.Println("correlation_id not found")
+		render.Render(w, r, cr.ErrNotFound())
+		return
+	}
+
+	rtx.Commit(db.PgxCtx)
+	pay := &PaymentProcessResponse{Message: "payment processed successfully"}
+	render.Render(w, r, pay)
 }
 
 // GET /payments/{id}
@@ -57,10 +119,9 @@ func (ph *PaymentHandler) createPayment(r *http.Request, w http.ResponseWriter) 
 //	    "requestedAt" : 2025-07-15T12:34:56.000Z
 //	}
 func (ph *PaymentHandler) getPayment(r *http.Request, w http.ResponseWriter) {
-
 	if id := chi.URLParam(r, "id"); id != "" {
 		pay := &PaymentResponse{Payment: &Payment{}}
-		row := db.Pgxpool.QueryRow(db.PgxCtx, "select correlation_id, amount, requested_at from payments where correlationId = $1", id).Scan(&pay.CorrelationId, &pay.Amount, &pay.RequestedAt)
+		row := db.Pgxpool.QueryRow(db.PgxCtx, "select correlation_id, amount, requested_at from payments where correlation_id = $1", id).Scan(&pay.CorrelationId, &pay.Amount, &pay.RequestedAt)
 
 		if row != nil {
 			fmt.Println("err: ", row)
@@ -91,6 +152,7 @@ func (ph *PaymentHandler) getPayments(r *http.Request, w http.ResponseWriter) {
 
 	if err != nil {
 		fmt.Printf("CollectRows error: %v", err)
+		render.Render(w, r, cr.ErrServerInternal())
 		return
 	}
 
@@ -114,4 +176,23 @@ func (ph *PaymentHandler) getPayments(r *http.Request, w http.ResponseWriter) {
 //     }
 // }
 
-func (ph *PaymentHandler) getSummary(r *http.Request, w http.ResponseWriter) {}
+// func (ph *PaymentHandler) getSummary(r *http.Request, w http.ResponseWriter) {
+
+// 	from := chi.URLParam(r, "from")
+// 	to := chi.URLParam(r, "to")
+
+// 	if from != "" && to != "" {
+// 		pay := &PaymentResponse{Payment: &Payment{}}
+// 		row := db.Pgxpool.QueryRow(db.PgxCtx, "select correlation_id, amount, requested_at from payments where correlationId = $1", id).Scan(&pay.CorrelationId, &pay.Amount, &pay.RequestedAt)
+
+// 		if row != nil {
+// 			fmt.Println("err: ", row)
+// 			render.Render(w, r, cr.ErrServerInternal())
+// 			return
+// 		}
+// 		render.Render(w, r, pay)
+// 		return
+// 	}
+
+// 	render.Render(w, r, cr.ErrNotFound())
+// }
