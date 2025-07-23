@@ -33,5 +33,6 @@ func CreateRoutes(gendoc bool) {
 
 	pay.NewRouter(r, gendoc)
 
+	fmt.Println("api started :9999")
 	http.ListenAndServe(":9999", r)
 }

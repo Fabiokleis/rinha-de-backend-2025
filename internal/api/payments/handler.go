@@ -3,8 +3,11 @@ package payments
 import (
 	"fmt"
 	"net/http"
+	"time"
+
 	cr "rinha/internal/api/common_responses"
 	db "rinha/internal/database"
+	prot "rinha/pkg/protocol"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
@@ -30,15 +33,28 @@ func (ph *PaymentHandler) createPayment(r *http.Request, w http.ResponseWriter) 
 		return
 	}
 
-	var id string
 	payment := data.Payment
-	err := db.Pgxpool.QueryRow(db.PgxCtx, "insert into payments values ($1, $2, NOW()) returning correlation_id", payment.CorrelationId, payment.Amount).Scan(&id)
+
+	payload := &prot.PaymentPayload{CorrelationId: payment.CorrelationId, Amount: payment.Amount, RequestedAt: time.Now()}
+	buffer, err := payload.Encode()
 	if err != nil {
-		fmt.Println("id: ", id)
+		fmt.Println("failed to encode payload", err.Error())
+		render.Render(w, r, cr.ErrServerInternal())
+	}
+
+	_, err = db.Pgxpool.Exec(db.PgxCtx, "select pg_notify($1, $2)", prot.Payments, string(buffer))
+	if err != nil {
 		fmt.Println("err: ", err.Error())
 		render.Render(w, r, cr.ErrServerInternal())
-		return
 	}
+
+	// err := db.Pgxpool.QueryRow(db.PgxCtx, "insert into payments values ($1, $2, NOW()) returning correlation_id", payment.CorrelationId, payment.Amount).Scan(&id)
+	// if err != nil {
+	// 	fmt.Println("id: ", id)
+	// 	fmt.Println("err: ", err.Error())
+	// 	render.Render(w, r, cr.ErrServerInternal())
+	// 	return
+	// }
 
 	render.Render(w, r, cr.SuccessCreated())
 }
@@ -76,28 +92,15 @@ func (ph *PaymentHandler) processPayment(r *http.Request, w http.ResponseWriter)
 
 	if err != nil {
 		rtx.Rollback(db.PgxCtx)
-		fmt.Println("failed to select amount: ", err.Error())
-		render.Render(w, r, cr.ErrServerInternal())
-		return
-	}
-	if amount == nil {
-		rtx.Rollback(db.PgxCtx)
 		fmt.Println("correlation_id not found")
 		render.Render(w, r, cr.ErrNotFound())
 		return
 	}
 
-	var id *string
-	err = rtx.QueryRow(db.PgxCtx, "update table payments set amount = $2 where correlation_id = $1 returning correlation_id", payment.CorrelationId, payment.Amount-*amount).Scan(id)
+	var id string
+	err = rtx.QueryRow(db.PgxCtx, "update table payments set amount = $2 where correlation_id = $1 returning correlation_id", payment.CorrelationId, payment.Amount-*amount).Scan(&id)
 
 	if err != nil {
-		rtx.Rollback(db.PgxCtx)
-		fmt.Println("failed to update amount: ", err.Error())
-		render.Render(w, r, cr.ErrServerInternal())
-		return
-	}
-
-	if id == nil {
 		rtx.Rollback(db.PgxCtx)
 		fmt.Println("correlation_id not found")
 		render.Render(w, r, cr.ErrNotFound())
