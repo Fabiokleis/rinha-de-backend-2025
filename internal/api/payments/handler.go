@@ -40,12 +40,14 @@ func (ph *PaymentHandler) createPayment(r *http.Request, w http.ResponseWriter) 
 	if err != nil {
 		fmt.Println("failed to encode payload", err.Error())
 		render.Render(w, r, cr.ErrServerInternal())
+		return
 	}
 
 	_, err = db.Pgxpool.Exec(db.PgxCtx, "select pg_notify($1, $2)", prot.Payments, string(buffer))
 	if err != nil {
 		fmt.Println("err: ", err.Error())
 		render.Render(w, r, cr.ErrServerInternal())
+		return
 	}
 
 	// err := db.Pgxpool.QueryRow(db.PgxCtx, "insert into payments values ($1, $2, NOW()) returning correlation_id", payment.CorrelationId, payment.Amount).Scan(&id)
