@@ -26,13 +26,13 @@ func Connect() {
 		os.Exit(1)
 	}
 
-	fmt.Println("PostgreSQL Connected")
+	fmt.Println("postgresql connected")
 }
 
 func Disconnect() {
 	if Pgxpool != nil {
 		Pgxpool.Close()
-		fmt.Println("PostgreSQL Disconnected")
+		fmt.Println("postgresql disconnected")
 		return
 	}
 	fmt.Fprintln(os.Stderr, "Trying to close nil connection pool")

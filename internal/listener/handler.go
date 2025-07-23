@@ -2,6 +2,7 @@ package listener
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	db "rinha/internal/database"
 	prot "rinha/pkg/protocol"
@@ -10,8 +11,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func waitAndProcessPayment(conn *pgxpool.Conn) error {
-	not, err := conn.Conn().WaitForNotification(db.PgxCtx)
+// returns error wating notification on timeout
+func waitAndProcessPayment(conn *pgxpool.Conn, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	not, err := conn.Conn().WaitForNotification(ctx)
 	if err != nil {
 		return err
 	}
@@ -23,6 +27,7 @@ func waitAndProcessPayment(conn *pgxpool.Conn) error {
 	return nil
 }
 
+// start listening and processing new notifications
 func processPaymentsQueue(ctx context.Context, topic string) error {
 	conn, err := db.Pgxpool.Acquire(db.PgxCtx)
 	if err != nil {
@@ -40,10 +45,15 @@ func processPaymentsQueue(ctx context.Context, topic string) error {
 		select {
 		case <-ctx.Done():
 			fmt.Printf("stop processing topic %v\n", topic)
-			conn.Exec(db.PgxCtx, fmt.Sprintf("UNLISTEN %s", topic))
-			return nil
+			_, err = conn.Exec(db.PgxCtx, fmt.Sprintf("UNLISTEN %s", topic))
+			return err
 		default:
-			if err := waitAndProcessPayment(conn); err != nil {
+			if err := waitAndProcessPayment(conn, 100*time.Millisecond); err != nil {
+				if (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) && ctx.Err() == nil {
+					//fmt.Println(err.Error())
+					//fmt.Println("listen timeout")
+					continue
+				}
 				return err
 			}
 			time.Sleep(10 * time.Millisecond)
@@ -51,6 +61,7 @@ func processPaymentsQueue(ctx context.Context, topic string) error {
 	}
 }
 
+// subscribe all handlers
 func assignTopics() {
 	l.subscribe(string(prot.Payments), processPaymentsQueue)
 }

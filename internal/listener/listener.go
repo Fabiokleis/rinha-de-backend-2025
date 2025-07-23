@@ -50,4 +50,5 @@ func Stop() {
 		l.unsubcribe(key)
 	}
 	l.handlers = make(map[string]TopicHandler)
+	fmt.Println("listener stopped")
 }

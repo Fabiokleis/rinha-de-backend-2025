@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 
 	pay "rinha/internal/api/payments"
@@ -14,7 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func CreateRoutes(gendoc bool) {
+func CreateRoutes(gendoc bool) *http.Server {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(render.SetContentType(render.ContentTypeJSON))
@@ -33,6 +34,14 @@ func CreateRoutes(gendoc bool) {
 
 	pay.NewRouter(r, gendoc)
 
-	fmt.Println("api started :9999")
-	http.ListenAndServe(":9999", r)
+	server := &http.Server{Addr: ":9999", Handler: r}
+
+	// start http server in non-blocking
+	go func() {
+		fmt.Println("api started :9999")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("HTTP server ListenAndServe: %v", err)
+		}
+	}()
+	return server
 }
