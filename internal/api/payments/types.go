@@ -3,20 +3,16 @@ package payments
 import (
 	"errors"
 	"net/http"
+	p "rinha/pkg/protocol"
 	"time"
 )
 
-type Payment struct {
-	CorrelationId string  `json:"correlationId"`
-	Amount        float64 `json:"amount"`
-}
-
 type PaymentRequest struct {
-	*Payment
+	*p.Payment
 }
 
 type PaymentProcessRequest struct {
-	*Payment
+	*p.Payment
 	RequestedAt time.Time `json:"requestedAt"`
 }
 
@@ -43,8 +39,9 @@ func (pay *PaymentProcessResponse) Render(w http.ResponseWriter, r *http.Request
 }
 
 type PaymentResponse struct {
-	*Payment
+	*p.Payment
 	RequestedAt time.Time `json:"requestedAt"`
+	Status      string    `json:"status"`
 }
 
 func (pr *PaymentResponse) Render(w http.ResponseWriter, r *http.Request) error {

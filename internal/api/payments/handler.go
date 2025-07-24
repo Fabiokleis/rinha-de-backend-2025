@@ -3,11 +3,11 @@ package payments
 import (
 	"fmt"
 	"net/http"
-	"time"
 
 	cr "rinha/internal/api/common_responses"
 	db "rinha/internal/database"
-	prot "rinha/pkg/protocol"
+
+	p "rinha/pkg/protocol"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
@@ -35,28 +35,30 @@ func (ph *PaymentHandler) createPayment(r *http.Request, w http.ResponseWriter) 
 
 	payment := data.Payment
 
-	payload := &prot.PaymentPayload{CorrelationId: payment.CorrelationId, Amount: payment.Amount, RequestedAt: time.Now()}
-	buffer, err := payload.Encode()
-	if err != nil {
-		fmt.Println("failed to encode payload", err.Error())
-		render.Render(w, r, cr.ErrServerInternal())
-		return
-	}
+	// payload := &prot.PaymentPayload{CorrelationId: payment.CorrelationId, Amount: payment.Amount, RequestedAt: time.Now().UTC()}
+	// buffer, err := payload.Encode()
+	// if err != nil {
+	// 	fmt.Println("failed to encode payload", err.Error())
+	// 	render.Render(w, r, cr.ErrServerInternal())
+	// 	return
+	// }
 
-	_, err = db.Pgxpool.Exec(db.PgxCtx, "select pg_notify($1, $2)", prot.Payments, string(buffer))
+	// _, err = db.Pgxpool.Exec(db.PgxCtx, "select pg_notify($1, $2)", prot.Payments, string(buffer))
+	// if err != nil {
+	// 	fmt.Println("err: ", err.Error())
+	// 	render.Render(w, r, cr.ErrServerInternal())
+	// 	return
+	// }
+
+	_, err := db.Pgxpool.Exec(db.PgxCtx, `
+                    INSERT INTO payments VALUES ($1, $2, NOW(), default)`,
+		payment.CorrelationId, payment.Amount)
+
 	if err != nil {
 		fmt.Println("err: ", err.Error())
 		render.Render(w, r, cr.ErrServerInternal())
 		return
 	}
-
-	// err := db.Pgxpool.QueryRow(db.PgxCtx, "insert into payments values ($1, $2, NOW()) returning correlation_id", payment.CorrelationId, payment.Amount).Scan(&id)
-	// if err != nil {
-	// 	fmt.Println("id: ", id)
-	// 	fmt.Println("err: ", err.Error())
-	// 	render.Render(w, r, cr.ErrServerInternal())
-	// 	return
-	// }
 
 	render.Render(w, r, cr.SuccessCreated())
 }
@@ -125,8 +127,12 @@ func (ph *PaymentHandler) processPayment(r *http.Request, w http.ResponseWriter)
 //	}
 func (ph *PaymentHandler) getPayment(r *http.Request, w http.ResponseWriter) {
 	if id := chi.URLParam(r, "id"); id != "" {
-		pay := &PaymentResponse{Payment: &Payment{}}
-		row := db.Pgxpool.QueryRow(db.PgxCtx, "select correlation_id, amount, requested_at from payments where correlation_id = $1", id).Scan(&pay.CorrelationId, &pay.Amount, &pay.RequestedAt)
+		pay := &PaymentResponse{Payment: &p.Payment{}}
+		row := db.Pgxpool.QueryRow(db.PgxCtx, `
+                         SELECT correlation_id, amount, requested_at, status
+                         FROM payments
+                         WHERE correlation_id = $1`,
+			id).Scan(&pay.CorrelationId, &pay.Amount, &pay.RequestedAt, &pay.Status)
 
 		if row != nil {
 			fmt.Println("err: ", row)
@@ -141,15 +147,18 @@ func (ph *PaymentHandler) getPayment(r *http.Request, w http.ResponseWriter) {
 }
 
 func (ph *PaymentHandler) getPayments(r *http.Request, w http.ResponseWriter) {
-	rows, err := db.Pgxpool.Query(db.PgxCtx, "select correlation_id, amount, requested_at from payments")
+	rows, err := db.Pgxpool.Query(db.PgxCtx, `
+                         SELECT correlation_id, amount, requested_at, status
+                         FROM payments`)
+
 	if err != nil {
 		fmt.Println(err.Error())
 		render.Render(w, r, cr.ErrServerInternal())
 		return
 	}
 	payments, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (render.Renderer, error) {
-		pay := &PaymentResponse{Payment: &Payment{}}
-		err := row.Scan(&pay.CorrelationId, &pay.Amount, &pay.RequestedAt)
+		pay := &PaymentResponse{Payment: &p.Payment{}}
+		err := row.Scan(&pay.CorrelationId, &pay.Amount, &pay.RequestedAt, &pay.Status)
 		fmt.Println(pay.CorrelationId)
 		fmt.Println(pay.Amount)
 		return pay, err

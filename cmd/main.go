@@ -19,6 +19,7 @@ var gendoc = flag.Bool("routes", false, "Generate router documentation")
 func main() {
 
 	flag.Parse()
+
 	db.Connect()
 	listener.Listen()
 	server := api.CreateRoutes(*gendoc)
