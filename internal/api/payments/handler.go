@@ -35,21 +35,7 @@ func (ph *PaymentHandler) createPayment(r *http.Request, w http.ResponseWriter) 
 
 	payment := data.Payment
 
-	// payload := &prot.PaymentPayload{CorrelationId: payment.CorrelationId, Amount: payment.Amount, RequestedAt: time.Now().UTC()}
-	// buffer, err := payload.Encode()
-	// if err != nil {
-	// 	fmt.Println("failed to encode payload", err.Error())
-	// 	render.Render(w, r, cr.ErrServerInternal())
-	// 	return
-	// }
-
-	// _, err = db.Pgxpool.Exec(db.PgxCtx, "select pg_notify($1, $2)", prot.Payments, string(buffer))
-	// if err != nil {
-	// 	fmt.Println("err: ", err.Error())
-	// 	render.Render(w, r, cr.ErrServerInternal())
-	// 	return
-	// }
-
+	// trigger sends notification to listeners
 	_, err := db.Pgxpool.Exec(db.PgxCtx, `
                     INSERT INTO payments VALUES ($1, $2, NOW(), default)`,
 		payment.CorrelationId, payment.Amount)

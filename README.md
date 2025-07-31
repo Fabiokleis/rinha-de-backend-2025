@@ -1,1 +1,13 @@
+# rinha
+
+Golang & PostgresSQL
+
+## test
+```shell
+nix-shell -p k6
+```
+
+## local running
+```shell
 DB_CONNECTION_STRING="host=localhost port=5432 database=rinha user=postgres password=postgres pool_min_conns=15 pool_max_conns=20" PROCESSOR_DEFAULT_URL=123 PROCESSOR_FALLBACK_URL=123 go run ./cmd/main.go
+```

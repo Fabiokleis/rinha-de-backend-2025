@@ -12,8 +12,7 @@ type PaymentRequest struct {
 }
 
 type PaymentProcessRequest struct {
-	*p.Payment
-	RequestedAt time.Time `json:"requestedAt"`
+	*p.ProcessingPayment
 }
 
 func (pay *PaymentRequest) Bind(r *http.Request) error {
