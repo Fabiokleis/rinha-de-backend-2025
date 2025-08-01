@@ -148,8 +148,8 @@ func (ph *PaymentHandler) getPayments(r *http.Request, w http.ResponseWriter) {
 	payments, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (render.Renderer, error) {
 		pay := &PaymentResponse{Payment: &p.Payment{}}
 		err := row.Scan(&pay.CorrelationId, &pay.Amount, &pay.RequestedAt, &pay.Status)
-		fmt.Println(pay.CorrelationId)
-		fmt.Println(pay.Amount)
+		//fmt.Println(pay.CorrelationId)
+		//fmt.Println(pay.Amount)
 		return pay, err
 	})
 
@@ -258,9 +258,18 @@ func (ph *PaymentHandler) getSummary(r *http.Request, w http.ResponseWriter) {
 		render.Render(w, r, cr.ErrServerInternal())
 		return
 	}
-	summary := SummaryResponse{
-		Default:  summ[0].Metric,
-		Fallback: summ[1].Metric,
+
+	summary := SummaryResponse{}
+
+	if len(summ) == 0 {
+		summary.Default = Service{TotalRequests: 0, TotalAmount: 0}
+		summary.Fallback = summary.Default
+	} else if len(summ) == 1 {
+		summary.Default = summ[0].Metric
+		summary.Fallback = Service{TotalRequests: 0, TotalAmount: 0}
+	} else {
+		summary.Default = summ[0].Metric
+		summary.Fallback = summ[1].Metric
 	}
 
 	render.Render(w, r, &summary)

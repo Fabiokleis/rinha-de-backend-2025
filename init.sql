@@ -11,6 +11,9 @@ CREATE INDEX payments_requested_at ON payments (requested_at);
 CREATE INDEX idx_payments_pending_jobs ON payments (requested_at)
 WHERE status = 'pending';
 
+CREATE INDEX idx_payments_processed_at ON payments (processed_at DESC) 
+WHERE status = 'completed';
+
 CREATE INDEX idx_payments_status_service_requested_at ON payments (status, service, requested_at);
 
 -- one row table to store median value

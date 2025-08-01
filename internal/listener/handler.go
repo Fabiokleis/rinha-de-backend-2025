@@ -56,13 +56,12 @@ func processedWatcher(ctx context.Context, id uint64, topic string) error {
 
 // send payment to payment processor
 func processPayment(services *PaymentServices, id uint64, conn *pgxpool.Conn, p *prot.ProcessingPayment) error {
-	fmt.Printf("[ID: %v] processing %v\n", id, p.CorrelationId)
 
 	latestMedian := median.Load()
 
 	service := "default"
 	processorUrl := *services.defaultUrl
-	if latestMedian < uint64(p.Amount) {
+	if uint64(p.Amount) < latestMedian {
 		processorUrl = *services.fallbackUrl
 		service = "fallback"
 	}
@@ -73,6 +72,7 @@ func processPayment(services *PaymentServices, id uint64, conn *pgxpool.Conn, p 
 		"requestedAt":   p.RequestedAt,
 	})
 
+	fmt.Printf("[ID: %v] processing %v URL: %v\n", id, p.CorrelationId, processorUrl)
 	resp, err := http.Post(processorUrl, "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		return err
