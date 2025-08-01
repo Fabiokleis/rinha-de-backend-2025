@@ -46,3 +46,22 @@ type PaymentResponse struct {
 func (pr *PaymentResponse) Render(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
+
+type Service struct {
+	TotalRequests int     `json:"totalRequests"`
+	TotalAmount   float64 `json:"totalAmount"`
+}
+
+type PaymentSummaryRow struct {
+	Name   string
+	Metric Service
+}
+
+type SummaryResponse struct {
+	Default  Service `json:"default"`
+	Fallback Service `json:"fallback"`
+}
+
+func (sr *SummaryResponse) Render(w http.ResponseWriter, r *http.Request) error {
+	return nil
+}

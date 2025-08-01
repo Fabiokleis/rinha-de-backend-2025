@@ -16,9 +16,9 @@ func NewRouter(r *chi.Mux, gendoc bool) *PaymentHandler {
 		handler.getPayments(r, w)
 	})
 
-	// r.Get("/payments-summary", func(w http.ResponseWriter, r *http.Request) {
-	// 	handler.getSummary(r, w)
-	// })
+	r.Get("/payments-summary", func(w http.ResponseWriter, r *http.Request) {
+		handler.getSummary(r, w)
+	})
 
 	// debug payment details
 	r.Get("/payments/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -32,6 +32,10 @@ func NewRouter(r *chi.Mux, gendoc bool) *PaymentHandler {
 	// implementado pelo payment processor, não pelo backend
 	r.Post("/process-payment", func(w http.ResponseWriter, r *http.Request) {
 		handler.processPayment(r, w)
+	})
+
+	r.Delete("/delete", func(w http.ResponseWriter, r *http.Request) {
+		handler.delete(r, w)
 	})
 
 	if gendoc {

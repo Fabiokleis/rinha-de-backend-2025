@@ -3,6 +3,8 @@ package payments
 import (
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	cr "rinha/internal/api/common_responses"
 	db "rinha/internal/database"
@@ -142,6 +144,7 @@ func (ph *PaymentHandler) getPayments(r *http.Request, w http.ResponseWriter) {
 		render.Render(w, r, cr.ErrServerInternal())
 		return
 	}
+	defer rows.Close()
 	payments, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (render.Renderer, error) {
 		pay := &PaymentResponse{Payment: &p.Payment{}}
 		err := row.Scan(&pay.CorrelationId, &pay.Amount, &pay.RequestedAt, &pay.Status)
@@ -151,7 +154,7 @@ func (ph *PaymentHandler) getPayments(r *http.Request, w http.ResponseWriter) {
 	})
 
 	if err != nil {
-		fmt.Printf("CollectRows error: %v", err)
+		fmt.Printf("CollectRows error: %v\n", err)
 		render.Render(w, r, cr.ErrServerInternal())
 		return
 	}
@@ -176,23 +179,109 @@ func (ph *PaymentHandler) getPayments(r *http.Request, w http.ResponseWriter) {
 //     }
 // }
 
-// func (ph *PaymentHandler) getSummary(r *http.Request, w http.ResponseWriter) {
+func (ph *PaymentHandler) getSummary(r *http.Request, w http.ResponseWriter) {
 
-// 	from := chi.URLParam(r, "from")
-// 	to := chi.URLParam(r, "to")
+	from := chi.URLParam(r, "from")
+	to := chi.URLParam(r, "to")
 
-// 	if from != "" && to != "" {
-// 		pay := &PaymentResponse{Payment: &Payment{}}
-// 		row := db.Pgxpool.QueryRow(db.PgxCtx, "select correlation_id, amount, requested_at from payments where correlationId = $1", id).Scan(&pay.CorrelationId, &pay.Amount, &pay.RequestedAt)
+	var parsedFrom, parsedTo time.Time
+	var err error
 
-// 		if row != nil {
-// 			fmt.Println("err: ", row)
-// 			render.Render(w, r, cr.ErrServerInternal())
-// 			return
-// 		}
-// 		render.Render(w, r, pay)
-// 		return
-// 	}
+	if from != "" {
+		parsedFrom, err = time.Parse(time.RFC3339Nano, from)
+		if err != nil {
+			render.Render(w, r, cr.ErrInvalidRequest("failed to parse 'from' date"))
+			return
+		}
+	}
 
-// 	render.Render(w, r, cr.ErrNotFound())
-// }
+	if to != "" {
+		parsedTo, err = time.Parse(time.RFC3339Nano, to)
+		if err != nil {
+			render.Render(w, r, cr.ErrInvalidRequest("failed to parse 'to' date"))
+			return
+		}
+	}
+
+	baseQuery := `
+            SELECT
+                service,
+                COUNT(*) AS total_requests,
+                SUM(amount) AS total_amount
+            FROM
+                payments
+            WHERE
+                service IS NOT NULL
+                AND status = 'completed'`
+
+	var conditions []string
+	var args []interface{}
+	argCounter := 1 // Inicia com 1 para os placeholders do pgx ($1, $2)
+
+	if !parsedFrom.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("requested_at >= $%d", argCounter))
+		args = append(args, from)
+		argCounter++
+	}
+
+	if !parsedTo.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("requested_at <= $%d", argCounter))
+		args = append(args, to)
+		argCounter++
+	}
+
+	finalQuery := baseQuery
+	if len(conditions) > 0 {
+		finalQuery += " AND " + strings.Join(conditions, " AND ")
+	}
+
+	finalQuery += " GROUP BY service"
+
+	rows, err := db.Pgxpool.Query(db.PgxCtx, finalQuery, args...)
+
+	if err != nil {
+		fmt.Println(err.Error())
+		render.Render(w, r, cr.ErrServerInternal())
+		return
+	}
+
+	defer rows.Close()
+
+	summ, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (PaymentSummaryRow, error) {
+		p := PaymentSummaryRow{}
+		err = row.Scan(&p.Name, &p.Metric.TotalRequests, &p.Metric.TotalAmount)
+		return p, err
+	})
+
+	if err != nil {
+		fmt.Printf("CollectRows error: %v\n", err)
+		render.Render(w, r, cr.ErrServerInternal())
+		return
+	}
+	summary := SummaryResponse{
+		Default:  summ[0].Metric,
+		Fallback: summ[1].Metric,
+	}
+
+	render.Render(w, r, &summary)
+	return
+}
+
+func (ph *PaymentHandler) delete(r *http.Request, w http.ResponseWriter) {
+
+	_, err := db.Pgxpool.Exec(db.PgxCtx, "DELETE FROM processing_metrics")
+	if err != nil {
+		fmt.Println("err: ", err.Error())
+		render.Render(w, r, cr.ErrServerInternal())
+		return
+	}
+
+	_, err = db.Pgxpool.Exec(db.PgxCtx, "DELETE FROM payments")
+	if err != nil {
+		fmt.Println("err: ", err.Error())
+		render.Render(w, r, cr.ErrServerInternal())
+		return
+	}
+
+	render.Render(w, r, cr.SuccessNoContent())
+}

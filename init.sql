@@ -11,12 +11,10 @@ CREATE INDEX payments_requested_at ON payments (requested_at);
 CREATE INDEX idx_payments_pending_jobs ON payments (requested_at)
 WHERE status = 'pending';
 
-CREATE INDEX idx_payments_processed_at ON payments (processed_at DESC) 
-WHERE status = 'completed';
-CREATE INDEX idx_payments_summary_report ON payments (service, requested_at);
+CREATE INDEX idx_payments_status_service_requested_at ON payments (status, service, requested_at);
 
 -- one row table to store median value
-CREATE TABLE processing_metrics (
+CREATE UNLOGGED TABLE processing_metrics (
     metric_name TEXT PRIMARY KEY,
     metric_value BIGINT NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
@@ -25,7 +23,6 @@ CREATE TABLE processing_metrics (
 -- Pre-populate it with a starting value
 INSERT INTO processing_metrics (metric_name, metric_value, updated_at) 
 VALUES ('rolling_average', 0, NOW());
-
 
 CREATE OR REPLACE FUNCTION fn_notify_new_payment()
 RETURNS TRIGGER AS $$

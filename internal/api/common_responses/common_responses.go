@@ -24,6 +24,12 @@ func SuccessCreated() render.Renderer {
 	}
 }
 
+func SuccessNoContent() render.Renderer {
+	return &Response{
+		HTTPStatusCode: http.StatusNoContent,
+	}
+}
+
 func ErrRender(err error) render.Renderer {
 	return &Response{
 		HTTPStatusCode: http.StatusUnprocessableEntity,
