@@ -261,15 +261,17 @@ func (ph *PaymentHandler) getSummary(r *http.Request, w http.ResponseWriter) {
 
 	summary := SummaryResponse{}
 
-	if len(summ) == 0 {
+	if len(summ) > 0 {
+		for _, ser := range summ {
+			if ser.Name == "default" {
+				summary.Default = ser.Metric
+			} else {
+				summary.Fallback = ser.Metric
+			}
+		}
+	} else {
 		summary.Default = Service{TotalRequests: 0, TotalAmount: 0}
 		summary.Fallback = summary.Default
-	} else if len(summ) == 1 {
-		summary.Default = summ[0].Metric
-		summary.Fallback = Service{TotalRequests: 0, TotalAmount: 0}
-	} else {
-		summary.Default = summ[0].Metric
-		summary.Fallback = summ[1].Metric
 	}
 
 	render.Render(w, r, &summary)

@@ -18,4 +18,5 @@ type Payment struct {
 type ProcessingPayment struct {
 	*Payment
 	RequestedAt time.Time `json:"requestedAt"`
+	Retries     uint64    `json:"retries"`
 }

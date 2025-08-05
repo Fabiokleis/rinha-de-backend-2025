@@ -3,13 +3,17 @@ CREATE UNLOGGED TABLE payments (
     amount DECIMAL NOT NULL,
     requested_at TIMESTAMPTZ NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
-    service TEXT, 
+    service TEXT,
+    retries BIGINT NOT NULL DEFAULT 0,
     processed_at TIMESTAMPTZ
 );
 
 CREATE INDEX payments_requested_at ON payments (requested_at);
 CREATE INDEX idx_payments_pending_jobs ON payments (requested_at)
 WHERE status = 'pending';
+
+CREATE INDEX idx_payments_failing_jobs ON payments (correlation_id, status)
+WHERE status = 'failing';
 
 CREATE INDEX idx_payments_processed_at ON payments (processed_at DESC) 
 WHERE status = 'completed';
@@ -65,5 +69,28 @@ BEGIN
     RETURNING metric_value INTO new_metric_value;
     
     RETURN new_metric_value;
+END;
+$$ LANGUAGE plpgsql;
+
+-- procedure to enqueue payment order on failing queue and notify it
+CREATE OR REPLACE FUNCTION reprocess_payment(id UUID)
+RETURNS VOID AS $$
+DECLARE
+    current_retries BIGINT;
+BEGIN
+    SELECT retries INTO current_retries FROM payments WHERE correlation_id = id;
+    IF current_retries + 1 <= 3 THEN
+        UPDATE payments
+        SET
+    	    status = 'failing',
+	    retries = current_retries + 1
+        WHERE correlation_id = id;
+
+        PERFORM pg_notify('payments_failing_queue', id::text);
+    ELSE
+        UPDATE payments
+	SET status = 'failed'
+	WHERE correlation_id = id;
+    END IF;
 END;
 $$ LANGUAGE plpgsql;
